@@ -1,0 +1,291 @@
+# Snapshot of the garages CMS GraphQL schema (autofik.dev.api.garages.cms
+# @ e418a6e), printed by scripts/print-cms-schema.ts.
+# test/schema_test.go validates every gateway operation against it.
+
+type Garage {
+  id: ID!
+  garagesAdminId: ID!
+  garageName: String!
+  addressLocation: String!
+  latitude: String!
+  longitude: String!
+  experienceYears: Int
+  days: [DayOfWeek!]
+  openTime: String
+  closeTime: String
+  isVerified: Boolean!
+  isInsured: BooleanFlag!
+  status: GarageStatus!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  services: [GarageService!]!
+  staff: [Staff!]!
+}
+
+"""Day of the week a garage is open"""
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+"""A true/false value carried as an enum"""
+enum BooleanFlag {
+  TRUE
+  FALSE
+}
+
+"""Onboarding/moderation status of a garage"""
+enum GarageStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REJECTED
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type GarageService {
+  id: ID!
+  garageId: ID!
+  serviceName: String!
+  description: String
+  serviceCategory: ServiceCategory!
+  durationMinutes: Int
+  price: Float!
+  isAvailable: BooleanFlag!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  garage: Garage!
+}
+
+"""Catalog category used by the garage service module"""
+enum ServiceCategory {
+  ENGINE
+  BRAKES
+  TYRE
+  BODY_WORK
+  ELECTRICAL
+  TRANSMISSION
+  AC
+  MAINTENANCE
+  CLEANING
+  DIAGNOSTIC
+  SAFETY
+  COMFORT
+  OTHER
+}
+
+type Staff {
+  id: ID!
+  garageId: ID!
+  name: String!
+  age: Int!
+  gender: Gender!
+  position: StaffPosition!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  garage: Garage!
+}
+
+"""Gender of a staff"""
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+"""Job position of a staff"""
+enum StaffPosition {
+  HR
+  MANAGER
+}
+
+type GarageRef {
+  id: ID!
+  garageName: String!
+  addressLocation: String!
+  latitude: String!
+  longitude: String!
+}
+
+type GarageSummary {
+  id: ID!
+  garagesAdminId: ID!
+  garageName: String!
+  addressLocation: String!
+  latitude: String!
+  longitude: String!
+  experienceYears: Int
+  days: [DayOfWeek!]
+  openTime: String
+  closeTime: String
+  isVerified: Boolean!
+  isInsured: BooleanFlag!
+  status: GarageStatus!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type GarageServiceSummary {
+  id: ID!
+  garageId: ID!
+  serviceName: String!
+  description: String
+  serviceCategory: ServiceCategory!
+  durationMinutes: Int
+  price: Float!
+  isAvailable: BooleanFlag!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  garage: GarageRef!
+}
+
+type StaffSummary {
+  id: ID!
+  garageId: ID!
+  name: String!
+  age: Int!
+  gender: Gender!
+  position: StaffPosition!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  garage: GarageRef!
+}
+
+type Query {
+  garages(filter: GarageFilterInput): [Garage!]!
+  garage(id: ID!): Garage!
+  garageServices(filter: GarageServiceFilterInput): [GarageService!]!
+  garageServicesCount(filter: GarageServiceFilterInput): Int!
+  garageService(id: ID!): GarageService!
+  staffMembers(filter: StaffFilterInput): [Staff!]!
+  staffMember(id: ID!): Staff!
+}
+
+input GarageFilterInput {
+  limit: Int = 25
+  offset: Int = 0
+  garagesAdminId: ID
+  status: GarageStatus
+  isVerified: Boolean
+  isInsured: BooleanFlag
+  search: String
+}
+
+input GarageServiceFilterInput {
+  limit: Int = 25
+  offset: Int = 0
+  garageId: ID
+  serviceCategory: ServiceCategory
+  isAvailable: BooleanFlag
+  search: String
+}
+
+input StaffFilterInput {
+  limit: Int = 25
+  offset: Int = 0
+  garageId: ID
+  position: StaffPosition
+  gender: Gender
+  search: String
+}
+
+type Mutation {
+  createGarage(input: CreateGarageInput!): GarageSummary!
+  updateGarage(input: UpdateGarageInput!): GarageSummary!
+  setGarageStatus(input: SetGarageStatusInput!): GarageSummary!
+  setGarageVerified(input: SetGarageVerifiedInput!): GarageSummary!
+  deleteGarage(id: ID!): Boolean!
+  createGarageService(input: CreateGarageServiceInput!): GarageServiceSummary!
+  updateGarageService(input: UpdateGarageServiceInput!): GarageServiceSummary!
+  setGarageServiceAvailability(input: SetGarageServiceAvailabilityInput!): GarageServiceSummary!
+  deleteGarageService(id: ID!): Boolean!
+  createStaff(input: CreateStaffInput!): StaffSummary!
+  updateStaff(input: UpdateStaffInput!): StaffSummary!
+  deleteStaff(id: ID!): Boolean!
+}
+
+input CreateGarageInput {
+  garagesAdminId: ID!
+  garageName: String!
+  addressLocation: String!
+  latitude: String!
+  longitude: String!
+  experienceYears: Int
+  days: [DayOfWeek!]
+  openTime: String
+  closeTime: String
+  isInsured: BooleanFlag
+}
+
+input UpdateGarageInput {
+  id: ID!
+  garageName: String
+  addressLocation: String
+  latitude: String
+  longitude: String
+  experienceYears: Int
+  days: [DayOfWeek!]
+  openTime: String
+  closeTime: String
+  isInsured: BooleanFlag
+}
+
+input SetGarageStatusInput {
+  id: ID!
+  status: GarageStatus!
+}
+
+input SetGarageVerifiedInput {
+  id: ID!
+  isVerified: Boolean!
+}
+
+input CreateGarageServiceInput {
+  garageId: ID!
+  serviceName: String!
+  description: String
+  serviceCategory: ServiceCategory!
+  durationMinutes: Int
+  price: Float!
+  isAvailable: BooleanFlag
+}
+
+input UpdateGarageServiceInput {
+  id: ID!
+  serviceName: String
+  description: String
+  serviceCategory: ServiceCategory
+  durationMinutes: Int
+  price: Float
+  isAvailable: BooleanFlag
+}
+
+input SetGarageServiceAvailabilityInput {
+  id: ID!
+  isAvailable: BooleanFlag!
+}
+
+input CreateStaffInput {
+  garageId: ID!
+  name: String!
+  age: Int!
+  gender: Gender!
+  position: StaffPosition!
+}
+
+input UpdateStaffInput {
+  id: ID!
+  name: String
+  age: Int
+  gender: Gender
+  position: StaffPosition
+}

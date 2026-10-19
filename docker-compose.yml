@@ -1,0 +1,50 @@
+# Standalone compose file for this service only.
+#
+# The Go binary serves REST/JSON itself via grpc-gateway
+# (GATEWAY_LISTEN_ADDR, default :8083) alongside its gRPC listener
+# (GRPC_LISTEN_ADDR, default :50057).
+#
+# Usage:
+#   docker compose up -d --build
+#   curl http://localhost:8083/healty
+
+services:
+  garages-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "${VERSION:-dev}"
+    restart: unless-stopped
+    ports:
+      - "50057:50057"
+      - "8083:8083"
+    environment:
+      GRPC_LISTEN_ADDR: ":50057"
+      GATEWAY_LISTEN_ADDR: ":8083"
+      # host.docker.internal because the CMS runs on the host, not in this
+      # compose project. A service on the same network would be its name.
+      GARAGE_CMS_SERVICE_URL: "${GARAGE_CMS_SERVICE_URL:-http://host.docker.internal:4042/graphql}"
+      REQUEST_TIMEOUT_SECONDS: "${REQUEST_TIMEOUT_SECONDS:-15}"
+      HTTP_CLIENT_TIMEOUT_SECONDS: "${HTTP_CLIENT_TIMEOUT_SECONDS:-10}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      LOG_FORMAT: "${LOG_FORMAT:-json}"
+      GRPC_ENABLE_REFLECTION: "${GRPC_ENABLE_REFLECTION:-}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # The image is distroless: it has no shell and no curl, so the healthcheck
+    # runs the service binary's own probe rather than a shell command.
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/garages-gateway", "-healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 40s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    deploy:
+      resources:
+        limits:
+          memory: 256M

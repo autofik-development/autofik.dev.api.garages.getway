@@ -1,0 +1,14 @@
+# Local environment
+.env
+
+# Compiled binaries
+/garages-gateway
+*.exe
+
+# Go tooling
+*.test
+*.out
+
+# Editor / OS
+.idea/
+.DS_Store

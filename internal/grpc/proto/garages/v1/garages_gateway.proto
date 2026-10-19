@@ -1,0 +1,535 @@
+syntax = "proto3";
+
+package garages.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/wrappers.proto";
+
+option go_package = "github.com/autofik-development/autofik.dev.api.garages.getway/internal/grpc/pb/garages/v1;garagesv1";
+
+// GaragesGatewayService is the typed surface of the garages gateway. Each RPC
+// is one call to the garages CMS (autofik.dev.api.garages.cms) GraphQL API,
+// and grpc-gateway (see internal/gateway) generates the REST surface from the
+// google.api.http options.
+//
+// Enum-like fields are strings carrying the CMS's own values verbatim
+// (GarageStatus, DayOfWeek, BooleanFlag, ServiceCategory, Gender,
+// StaffPosition), so the gateway does not need a release each time the CMS
+// adds a value. The CMS validates them.
+service GaragesGatewayService {
+  // HealthCheck reports this gateway process's own liveness. It does not
+  // probe the CMS.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {
+    option (google.api.http) = {
+      get: "/garages/v1/health"
+    };
+  }
+
+  // ---------------------------------------------------------------- garages
+
+  // ListGarages returns garages newest first, without their services and
+  // staff. CMS query `garages`.
+  rpc ListGarages(ListGaragesRequest) returns (ListGaragesResponse) {
+    option (google.api.http) = {
+      get: "/garages/v1/garages"
+    };
+  }
+
+  // GetGarage returns one garage with its services and staff. CMS query
+  // `garage`.
+  rpc GetGarage(GetGarageRequest) returns (GetGarageResponse) {
+    option (google.api.http) = {
+      get: "/garages/v1/garages/{id}"
+    };
+  }
+
+  // CreateGarage registers a garage in PENDING status. CMS mutation
+  // `createGarage`.
+  rpc CreateGarage(CreateGarageRequest) returns (GarageResponse) {
+    option (google.api.http) = {
+      post: "/garages/v1/garages"
+      body: "*"
+    };
+  }
+
+  // UpdateGarage changes only the fields present in the request. CMS mutation
+  // `updateGarage`.
+  rpc UpdateGarage(UpdateGarageRequest) returns (GarageResponse) {
+    option (google.api.http) = {
+      patch: "/garages/v1/garages/{id}"
+      body: "*"
+    };
+  }
+
+  // SetGarageStatus moves a garage through its moderation states. CMS
+  // mutation `setGarageStatus`.
+  rpc SetGarageStatus(SetGarageStatusRequest) returns (GarageResponse) {
+    option (google.api.http) = {
+      patch: "/garages/v1/garages/{id}/status"
+      body: "*"
+    };
+  }
+
+  // SetGarageVerified sets or clears the verified flag; only an ACTIVE garage
+  // can be verified. CMS mutation `setGarageVerified`.
+  rpc SetGarageVerified(SetGarageVerifiedRequest) returns (GarageResponse) {
+    option (google.api.http) = {
+      patch: "/garages/v1/garages/{id}/verified"
+      body: "*"
+    };
+  }
+
+  // DeleteGarage removes a garage. CMS mutation `deleteGarage`.
+  rpc DeleteGarage(DeleteGarageRequest) returns (DeleteResponse) {
+    option (google.api.http) = {
+      delete: "/garages/v1/garages/{id}"
+    };
+  }
+
+  // -------------------------------------------------------- garage services
+
+  // ListGarageServices returns garage services newest first, without their
+  // garage. CMS query `garageServices`.
+  rpc ListGarageServices(ListGarageServicesRequest) returns (ListGarageServicesResponse) {
+    option (google.api.http) = {
+      get: "/garages/v1/garage-services"
+    };
+  }
+
+  // GetGarageService returns one garage service with a reference to its
+  // garage. CMS query `garageService`.
+  rpc GetGarageService(GetGarageServiceRequest) returns (GarageServiceResponse) {
+    option (google.api.http) = {
+      get: "/garages/v1/garage-services/{id}"
+    };
+  }
+
+  // CountGarageServices counts the garage services matching a filter. CMS
+  // query `garageServicesCount`.
+  //
+  // Declared after GetGarageService on purpose: grpc-gateway gives the
+  // pattern registered last precedence, and that must be this literal
+  // "/count" rather than the "{id}" pattern that would otherwise swallow it.
+  rpc CountGarageServices(CountGarageServicesRequest) returns (CountGarageServicesResponse) {
+    option (google.api.http) = {
+      get: "/garages/v1/garage-services/count"
+    };
+  }
+
+  // CreateGarageService adds a service to a garage's catalog; a garage may
+  // offer each service_category once. CMS mutation `createGarageService`.
+  rpc CreateGarageService(CreateGarageServiceRequest) returns (GarageServiceResponse) {
+    option (google.api.http) = {
+      post: "/garages/v1/garage-services"
+      body: "*"
+    };
+  }
+
+  // UpdateGarageService changes only the fields present in the request. CMS
+  // mutation `updateGarageService`.
+  rpc UpdateGarageService(UpdateGarageServiceRequest) returns (GarageServiceResponse) {
+    option (google.api.http) = {
+      patch: "/garages/v1/garage-services/{id}"
+      body: "*"
+    };
+  }
+
+  // SetGarageServiceAvailability toggles whether a service can be booked. CMS
+  // mutation `setGarageServiceAvailability`.
+  rpc SetGarageServiceAvailability(SetGarageServiceAvailabilityRequest) returns (GarageServiceResponse) {
+    option (google.api.http) = {
+      patch: "/garages/v1/garage-services/{id}/availability"
+      body: "*"
+    };
+  }
+
+  // DeleteGarageService removes a service from a garage's catalog. CMS
+  // mutation `deleteGarageService`.
+  rpc DeleteGarageService(DeleteGarageServiceRequest) returns (DeleteResponse) {
+    option (google.api.http) = {
+      delete: "/garages/v1/garage-services/{id}"
+    };
+  }
+
+  // ------------------------------------------------------------------ staff
+
+  // ListStaffMembers returns staff newest first, without their garage. CMS
+  // query `staffMembers`.
+  rpc ListStaffMembers(ListStaffMembersRequest) returns (ListStaffMembersResponse) {
+    option (google.api.http) = {
+      get: "/garages/v1/staff-members"
+    };
+  }
+
+  // GetStaffMember returns one staff member with a reference to their
+  // garage. CMS query `staffMember`.
+  rpc GetStaffMember(GetStaffMemberRequest) returns (StaffMemberResponse) {
+    option (google.api.http) = {
+      get: "/garages/v1/staff-members/{id}"
+    };
+  }
+
+  // CreateStaffMember adds a staff member to a garage. CMS mutation
+  // `createStaff`.
+  rpc CreateStaffMember(CreateStaffMemberRequest) returns (StaffMemberResponse) {
+    option (google.api.http) = {
+      post: "/garages/v1/staff-members"
+      body: "*"
+    };
+  }
+
+  // UpdateStaffMember changes only the fields present in the request. CMS
+  // mutation `updateStaff`.
+  rpc UpdateStaffMember(UpdateStaffMemberRequest) returns (StaffMemberResponse) {
+    option (google.api.http) = {
+      patch: "/garages/v1/staff-members/{id}"
+      body: "*"
+    };
+  }
+
+  // DeleteStaffMember removes a staff member. CMS mutation `deleteStaff`.
+  rpc DeleteStaffMember(DeleteStaffMemberRequest) returns (DeleteResponse) {
+    option (google.api.http) = {
+      delete: "/garages/v1/staff-members/{id}"
+    };
+  }
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string status = 1;
+  string service = 2;
+}
+
+// Every other response wraps its payload in the platform's
+// {status, message, code, data} envelope.
+//
+// Ids are uuids. Timestamps are RFC 3339 strings in UTC. A string the CMS
+// returns as null is "" here; an integer it returns as null is null.
+
+// ----------------------------------------------------------------- resources
+
+message Garage {
+  string id = 1;
+  string garages_admin_id = 2;
+  string garage_name = 3;
+  string address_location = 4;
+  // Decimal degrees as a string, e.g. "11.5564".
+  string latitude = 5;
+  string longitude = 6;
+  google.protobuf.Int32Value experience_years = 7;
+  // DayOfWeek values: MONDAY ... SUNDAY.
+  repeated string days = 8;
+  // Time of day, e.g. "08:00:00". The CMS echoes the value as it was sent
+  // in the response to a create or update, so that one may read "08:00".
+  string open_time = 9;
+  string close_time = 10;
+  bool is_verified = 11;
+  // BooleanFlag: "TRUE" or "FALSE".
+  string is_insured = 12;
+  // GarageStatus: PENDING, ACTIVE, SUSPENDED or REJECTED.
+  string status = 13;
+  string created_at = 14;
+  string updated_at = 15;
+}
+
+// GarageRef names and places a garage, for payloads that belong to one.
+message GarageRef {
+  string id = 1;
+  string garage_name = 2;
+  string address_location = 3;
+  string latitude = 4;
+  string longitude = 5;
+}
+
+message GarageService {
+  string id = 1;
+  string garage_id = 2;
+  string service_name = 3;
+  string description = 4;
+  // ServiceCategory: ENGINE, BRAKES, TYRE, BODY_WORK, ELECTRICAL,
+  // TRANSMISSION, AC, MAINTENANCE, CLEANING, DIAGNOSTIC, SAFETY, COMFORT or
+  // OTHER.
+  string service_category = 5;
+  google.protobuf.Int32Value duration_minutes = 6;
+  double price = 7;
+  // BooleanFlag: "TRUE" or "FALSE".
+  string is_available = 8;
+  string created_at = 9;
+  string updated_at = 10;
+  // The owning garage. Set on single reads and mutations; null in lists and
+  // inside a GarageDetail, where the garage is already known.
+  GarageRef garage = 11;
+}
+
+message StaffMember {
+  string id = 1;
+  string garage_id = 2;
+  string name = 3;
+  int32 age = 4;
+  // Gender: MALE, FEMALE or OTHER.
+  string gender = 5;
+  // StaffPosition: HR or MANAGER.
+  string position = 6;
+  string created_at = 7;
+  string updated_at = 8;
+  // The owning garage. Set on single reads and mutations; null in lists and
+  // inside a GarageDetail, where the garage is already known.
+  GarageRef garage = 9;
+}
+
+// GarageDetail is a garage together with its catalog and staff.
+message GarageDetail {
+  Garage garage = 1;
+  repeated GarageService services = 2;
+  repeated StaffMember staff = 3;
+}
+
+message DeleteResult {
+  string id = 1;
+  bool deleted = 2;
+}
+
+message DeleteResponse {
+  string status = 1;
+  string message = 2;
+  string code = 3;
+  DeleteResult data = 4;
+}
+
+// ------------------------------------------------------------------- garages
+
+// Empty filter fields are not applied. limit defaults to 25 (max 100) and
+// offset to 0.
+message ListGaragesRequest {
+  string garages_admin_id = 1;
+  string status = 2;
+  optional bool is_verified = 3;
+  string is_insured = 4;
+  // Case-insensitive match on garage name or address.
+  string search = 5;
+  optional int32 limit = 6;
+  optional int32 offset = 7;
+}
+
+message ListGaragesData {
+  repeated Garage garages = 1;
+}
+
+message ListGaragesResponse {
+  string status = 1;
+  string message = 2;
+  string code = 3;
+  ListGaragesData data = 4;
+}
+
+message GetGarageRequest {
+  string id = 1;
+}
+
+message GetGarageResponse {
+  string status = 1;
+  string message = 2;
+  string code = 3;
+  GarageDetail data = 4;
+}
+
+message CreateGarageRequest {
+  string garages_admin_id = 1;
+  string garage_name = 2;
+  string address_location = 3;
+  string latitude = 4;
+  string longitude = 5;
+  optional int32 experience_years = 6;
+  repeated string days = 7;
+  // HH:mm or HH:mm:ss; close_time must be later than open_time.
+  string open_time = 8;
+  string close_time = 9;
+  // BooleanFlag; defaults to "FALSE".
+  string is_insured = 10;
+}
+
+// Only the fields present are changed. An empty days list leaves the stored
+// days unchanged.
+message UpdateGarageRequest {
+  string id = 1;
+  optional string garage_name = 2;
+  optional string address_location = 3;
+  optional string latitude = 4;
+  optional string longitude = 5;
+  optional int32 experience_years = 6;
+  repeated string days = 7;
+  optional string open_time = 8;
+  optional string close_time = 9;
+  optional string is_insured = 10;
+}
+
+// Allowed transitions: PENDING -> ACTIVE | REJECTED, ACTIVE -> SUSPENDED,
+// SUSPENDED -> ACTIVE, REJECTED -> PENDING.
+message SetGarageStatusRequest {
+  string id = 1;
+  string status = 2;
+}
+
+message SetGarageVerifiedRequest {
+  string id = 1;
+  // Required; an absent value is rejected rather than read as false.
+  optional bool is_verified = 2;
+}
+
+message GarageResponse {
+  string status = 1;
+  string message = 2;
+  string code = 3;
+  Garage data = 4;
+}
+
+message DeleteGarageRequest {
+  string id = 1;
+}
+
+// ----------------------------------------------------------- garage services
+
+// Empty filter fields are not applied. limit defaults to 25 (max 100) and
+// offset to 0.
+message ListGarageServicesRequest {
+  string garage_id = 1;
+  string service_category = 2;
+  string is_available = 3;
+  // Case-insensitive match on service name or description.
+  string search = 4;
+  optional int32 limit = 5;
+  optional int32 offset = 6;
+}
+
+message ListGarageServicesData {
+  repeated GarageService garage_services = 1;
+}
+
+message ListGarageServicesResponse {
+  string status = 1;
+  string message = 2;
+  string code = 3;
+  ListGarageServicesData data = 4;
+}
+
+message CountGarageServicesRequest {
+  string garage_id = 1;
+  string service_category = 2;
+  string is_available = 3;
+  string search = 4;
+}
+
+message CountGarageServicesData {
+  int32 count = 1;
+}
+
+message CountGarageServicesResponse {
+  string status = 1;
+  string message = 2;
+  string code = 3;
+  CountGarageServicesData data = 4;
+}
+
+message GetGarageServiceRequest {
+  string id = 1;
+}
+
+message CreateGarageServiceRequest {
+  string garage_id = 1;
+  string service_name = 2;
+  string description = 3;
+  string service_category = 4;
+  optional int32 duration_minutes = 5;
+  // Required; an absent price is rejected rather than read as 0.
+  optional double price = 6;
+  // BooleanFlag; defaults to "TRUE".
+  string is_available = 7;
+}
+
+// Only the fields present are changed.
+message UpdateGarageServiceRequest {
+  string id = 1;
+  optional string service_name = 2;
+  optional string description = 3;
+  optional string service_category = 4;
+  optional int32 duration_minutes = 5;
+  optional double price = 6;
+  optional string is_available = 7;
+}
+
+message SetGarageServiceAvailabilityRequest {
+  string id = 1;
+  // BooleanFlag: "TRUE" or "FALSE".
+  string is_available = 2;
+}
+
+message GarageServiceResponse {
+  string status = 1;
+  string message = 2;
+  string code = 3;
+  GarageService data = 4;
+}
+
+message DeleteGarageServiceRequest {
+  string id = 1;
+}
+
+// --------------------------------------------------------------------- staff
+
+// Empty filter fields are not applied. limit defaults to 25 (max 100) and
+// offset to 0.
+message ListStaffMembersRequest {
+  string garage_id = 1;
+  string position = 2;
+  string gender = 3;
+  // Case-insensitive match on name.
+  string search = 4;
+  optional int32 limit = 5;
+  optional int32 offset = 6;
+}
+
+message ListStaffMembersData {
+  repeated StaffMember staff_members = 1;
+}
+
+message ListStaffMembersResponse {
+  string status = 1;
+  string message = 2;
+  string code = 3;
+  ListStaffMembersData data = 4;
+}
+
+message GetStaffMemberRequest {
+  string id = 1;
+}
+
+message CreateStaffMemberRequest {
+  string garage_id = 1;
+  string name = 2;
+  // 16 to 100.
+  int32 age = 3;
+  string gender = 4;
+  string position = 5;
+}
+
+// Only the fields present are changed.
+message UpdateStaffMemberRequest {
+  string id = 1;
+  optional string name = 2;
+  optional int32 age = 3;
+  optional string gender = 4;
+  optional string position = 5;
+}
+
+message StaffMemberResponse {
+  string status = 1;
+  string message = 2;
+  string code = 3;
+  StaffMember data = 4;
+}
+
+message DeleteStaffMemberRequest {
+  string id = 1;
+}
