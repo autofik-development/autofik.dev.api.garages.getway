@@ -1,7 +1,8 @@
 // Package test holds the gateway's integration tests. They exercise the
 // service the way a caller does - over a real gRPC connection and, for the
 // REST surface, through the real grpc-gateway mux - against a fake CMS that
-// speaks GraphQL over HTTP, rather than reaching into unexported internals.
+// speaks GraphQL over HTTP and a fake garage SSO that answers verify-token,
+// rather than reaching into unexported internals.
 package test
 
 import (
@@ -14,7 +15,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,7 +25,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
 
+	"github.com/autofik-development/autofik.dev.api.garages.getway/internal/auth"
 	"github.com/autofik-development/autofik.dev.api.garages.getway/internal/cms"
 	"github.com/autofik-development/autofik.dev.api.garages.getway/internal/gateway"
 	pb "github.com/autofik-development/autofik.dev.api.garages.getway/internal/grpc/pb/garages/v1"
@@ -38,6 +43,20 @@ const (
 	staffID   = "1f2e3d4c-5b6a-4978-8695-a4b3c2d1e0f9"
 )
 
+// The session the fake SSO knows, as testdata/sso-verify-token.json lists
+// it: garageToken is the bearer it accepts, for the account ssoGarageUUID,
+// which logged in from garageServiceCode. Every test client sends the token
+// and the code unless a test says otherwise, so a test about garages need
+// not think about auth.
+const (
+	garageToken        = "garage-session-token"
+	garageServiceCode  = "sso-garage"
+	ssoGarageUUID      = "5d0c6a8e-2f4b-4c1d-9e7a-3b8f1c2d4e6f"
+	ssoGarageAccountID = "12345678"
+	ssoDeviceID        = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+	ssoVerifyPath      = "/api/garage/verify-token"
+)
+
 // TestMain silences the gateway's structured access logging.
 func TestMain(m *testing.M) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -45,7 +64,10 @@ func TestMain(m *testing.M) {
 }
 
 type testGateway struct {
+	// conn sends garageToken and garageServiceCode on every unary call;
+	// anon sends no credentials of its own.
 	conn *grpc.ClientConn
+	anon *grpc.ClientConn
 	rest *httptest.Server
 }
 
@@ -59,8 +81,16 @@ func newTestGateway(t *testing.T) *testGateway {
 }
 
 // newTestGatewayWithCMS is newTestGateway with its CMS client pointed at
-// cmsURL, typically a fakeCMS.
+// cmsURL, typically a fakeCMS. Callers are verified by a fake SSO that
+// accepts garageToken.
 func newTestGatewayWithCMS(t *testing.T, cmsURL string) *testGateway {
+	t.Helper()
+	return newTestGatewayWithSSO(t, cmsURL, newFakeSSO(t, ssoAccepting(t)).verifyURL())
+}
+
+// newTestGatewayWithSSO is newTestGatewayWithCMS with callers verified
+// against ssoVerifyURL, typically a fakeSSO's.
+func newTestGatewayWithSSO(t *testing.T, cmsURL, ssoVerifyURL string) *testGateway {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -68,12 +98,15 @@ func newTestGatewayWithCMS(t *testing.T, cmsURL string) *testGateway {
 		t.Fatalf("listen: %v", err)
 	}
 
+	verifier := auth.NewHTTPVerifier(auth.Config{VerifyURL: ssoVerifyURL, VerifyTimeout: 2 * time.Second}, nil)
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
 			interceptors.Recovery(),
 			interceptors.Logging(),
 			interceptors.Timeout(5*time.Second),
+			auth.UnaryInterceptor(verifier),
 		),
+		grpc.StreamInterceptor(auth.StreamInterceptor(verifier)),
 	)
 	pb.RegisterGaragesGatewayServiceServer(grpcServer, service.NewGaragesGatewayServer(cms.New(cmsURL, nil)))
 
@@ -93,20 +126,155 @@ func newTestGatewayWithCMS(t *testing.T, cmsURL string) *testGateway {
 	}
 	rest := httptest.NewServer(gateway.NewMux(handler))
 
-	conn, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(sendGarageCredentials))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	anon, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
 
 	t.Cleanup(func() {
 		_ = conn.Close()
+		_ = anon.Close()
 		rest.Close()
 		_ = closeGatewayConn()
 		cancel()
 		grpcServer.Stop()
 	})
 
-	return &testGateway{conn: conn, rest: rest}
+	return &testGateway{conn: conn, anon: anon, rest: rest}
+}
+
+// sendGarageCredentials adds the bearer and service-code the fake SSO
+// accepts to every unary call made on the connection it is installed on.
+func sendGarageCredentials(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	ctx = metadata.AppendToOutgoingContext(ctx,
+		"authorization", "Bearer "+garageToken,
+		auth.ServiceCodeHeader, garageServiceCode)
+	return invoker(ctx, method, req, reply, cc, opts...)
+}
+
+// fakeSSO stands in for the garage SSO's verify-token: it records the
+// headers of every request it gets and answers each one with its handler.
+type fakeSSO struct {
+	*httptest.Server
+
+	mu      sync.Mutex
+	headers []http.Header
+}
+
+func newFakeSSO(t *testing.T, handler http.HandlerFunc) *fakeSSO {
+	t.Helper()
+
+	sso := &fakeSSO{}
+	sso.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != ssoVerifyPath {
+			t.Errorf("SSO request = %s %s, want GET %s", r.Method, r.URL.Path, ssoVerifyPath)
+		}
+		sso.mu.Lock()
+		sso.headers = append(sso.headers, r.Header.Clone())
+		sso.mu.Unlock()
+
+		handler(w, r)
+	}))
+	t.Cleanup(sso.Close)
+
+	return sso
+}
+
+func (s *fakeSSO) verifyURL() string { return s.URL + ssoVerifyPath }
+
+// calls returns the headers of every request the SSO got, oldest first.
+func (s *fakeSSO) calls() []http.Header {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]http.Header(nil), s.headers...)
+}
+
+// ssoBearer is SSO's own match on Authorization.
+var ssoBearer = regexp.MustCompile(`(?i)^Bearer (.+)$`)
+
+// ssoAccepting answers the way the garage SSO's verify-token does for the
+// one session it knows: 401 INVALID_TOKEN to any bearer but garageToken, 400
+// INVALID_SERVICE_CODE to any service-code but garageServiceCode, and
+// otherwise testdata/sso-verify-token.json.
+func ssoAccepting(t *testing.T) http.HandlerFunc {
+	t.Helper()
+
+	body, err := os.ReadFile("testdata/sso-verify-token.json")
+	if err != nil {
+		t.Fatalf("read SSO fixture: %v", err)
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		match := ssoBearer.FindStringSubmatch(r.Header.Get("Authorization"))
+		switch {
+		case match == nil || match[1] != garageToken:
+			writeSSO(w, http.StatusUnauthorized, `{"status": "failure", "message": "Invalid or expired token", "code": "INVALID_TOKEN"}`)
+		case strings.TrimSpace(r.Header.Get(auth.ServiceCodeHeader)) != garageServiceCode:
+			writeSSO(w, http.StatusBadRequest, `{"status": "failure", "message": "Invalid service code",
+				"code": "INVALID_SERVICE_CODE", "state": "garage_verify_token_list"}`)
+		default:
+			writeSSO(w, http.StatusOK, string(body))
+		}
+	}
+}
+
+// ssoAnswering answers every verify-token call with httpStatus and body.
+func ssoAnswering(httpStatus int, body string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeSSO(w, httpStatus, body)
+	}
+}
+
+func writeSSO(w http.ResponseWriter, httpStatus int, body string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(httpStatus)
+	_, _ = io.WriteString(w, body)
+}
+
+// ssoSessions is a verify-token 200 listing sessions, each the fixture's
+// logged-in session with changes applied; a nil change removes the field.
+func ssoSessions(t *testing.T, changes ...map[string]any) string {
+	t.Helper()
+
+	sessions := make([]map[string]any, 0, len(changes))
+	for _, change := range changes {
+		session := map[string]any{
+			"uuid":            ssoGarageUUID,
+			"deviceId":        ssoDeviceID,
+			"otpVerify":       true,
+			"profileVerify":   true,
+			"TokenStatus":     "success",
+			"isLogout":        false,
+			"garageAccountId": ssoGarageAccountID,
+			"serviceCode":     garageServiceCode,
+		}
+		for key, value := range change {
+			if value == nil {
+				delete(session, key)
+			} else {
+				session[key] = value
+			}
+		}
+		sessions = append(sessions, session)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"status":  "success",
+		"message": "Verify tokens retrieved successfully",
+		"code":    "VERIFY_TOKEN_LIST_SUCCESS",
+		"state":   "garage_verify_token_list",
+		"data":    sessions,
+	})
+	if err != nil {
+		t.Fatalf("encode SSO answer: %v", err)
+	}
+	return string(body)
 }
 
 // cmsCall is one GraphQL request the fake CMS received.
@@ -182,11 +350,15 @@ func assertVariables(t *testing.T, call cmsCall, want string) {
 	assertJSONEqual(t, got, want)
 }
 
+// restJSON sends a request as the test garage: with the bearer and
+// service-code the fake SSO accepts.
 func restJSON(t *testing.T, method, url, body string) (int, []byte) {
 	t.Helper()
 	return restJSONWithHeader(t, method, url, body, nil)
 }
 
+// restJSONWithHeader is restJSON with header on top: each entry replaces
+// the header of that name, and a nil entry removes it.
 func restJSONWithHeader(t *testing.T, method, url, body string, header http.Header) (int, []byte) {
 	t.Helper()
 
@@ -194,8 +366,13 @@ func restJSONWithHeader(t *testing.T, method, url, body string, header http.Head
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, url, err)
 	}
+	req.Header.Set("Authorization", "Bearer "+garageToken)
+	req.Header.Set(auth.ServiceCodeHeader, garageServiceCode)
 	for key, values := range header {
-		req.Header[key] = values
+		req.Header.Del(key)
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
 	}
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")

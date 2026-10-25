@@ -158,7 +158,8 @@ func TestRESTCMSUnreachable(t *testing.T) {
 // TestRESTForwardedHeaders checks the request id reaches the CMS for log
 // correlation, and that caller-supplied identity headers do not: the CMS
 // reads x-mysabay-user-id without verifying it, so forwarding it would let
-// any caller choose who they are.
+// any caller choose who they are. The bearer and service-code are for SSO
+// alone.
 func TestRESTForwardedHeaders(t *testing.T) {
 	cms, calls := fakeCMS(t, http.StatusOK, cmsResult(`[]`))
 	gw := newTestGatewayWithCMS(t, cms.URL+"/graphql")
@@ -167,7 +168,6 @@ func TestRESTForwardedHeaders(t *testing.T) {
 		"X-Request-Id":      {"req-123"},
 		"X-Mysabay-User-Id": {"42"},
 		"X-Signature":       {"forged"},
-		"Authorization":     {"Bearer some-token"},
 	})
 	if status != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body %s", status, body)
@@ -177,7 +177,7 @@ func TestRESTForwardedHeaders(t *testing.T) {
 	if got := header.Get("X-Request-Id"); got != "req-123" {
 		t.Errorf("CMS X-Request-Id = %q, want req-123", got)
 	}
-	for _, name := range []string{"X-Mysabay-User-Id", "X-Signature", "Authorization"} {
+	for _, name := range []string{"X-Mysabay-User-Id", "X-Signature", "Authorization", "Service-Code"} {
 		if got := header.Get(name); got != "" {
 			t.Errorf("CMS received %s = %q, want it not forwarded", name, got)
 		}

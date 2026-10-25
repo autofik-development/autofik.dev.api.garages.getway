@@ -22,9 +22,13 @@ services:
     environment:
       GRPC_LISTEN_ADDR: ":50057"
       GATEWAY_LISTEN_ADDR: ":8083"
-      # host.docker.internal because the CMS runs on the host, not in this
-      # compose project. A service on the same network would be its name.
+      # host.docker.internal because the CMS and the garage SSO run on the
+      # host, not in this compose project. A service on the same network
+      # would be its name.
       GARAGE_CMS_SERVICE_URL: "${GARAGE_CMS_SERVICE_URL:-http://host.docker.internal:4042/graphql}"
+      SSO_GARAGE_SERVICE_URL: "${SSO_GARAGE_SERVICE_URL:-http://host.docker.internal:4000}"
+      SSO_GARAGE_VERIFY_URL: "${SSO_GARAGE_VERIFY_URL:-}"
+      SSO_VERIFY_TIMEOUT: "${SSO_VERIFY_TIMEOUT:-3s}"
       REQUEST_TIMEOUT_SECONDS: "${REQUEST_TIMEOUT_SECONDS:-15}"
       HTTP_CLIENT_TIMEOUT_SECONDS: "${HTTP_CLIENT_TIMEOUT_SECONDS:-10}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"

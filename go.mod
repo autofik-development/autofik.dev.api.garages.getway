@@ -1,6 +1,6 @@
 module github.com/autofik-development/autofik.dev.api.garages.getway
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0

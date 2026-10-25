@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/autofik-development/autofik.dev.api.garages.getway/internal/auth"
 	pb "github.com/autofik-development/autofik.dev.api.garages.getway/internal/grpc/pb/garages/v1"
 )
 
@@ -152,12 +153,13 @@ func errorCode(code codes.Code) string {
 }
 
 // incomingHeaderMatcher forwards the headers the handlers and logs need.
-// runtime.DefaultHeaderMatcher already passes Authorization through as
-// "authorization"; this adds the correlation and client-IP headers an edge
-// proxy sets, which the default matcher would drop.
+// grpc-gateway always passes Authorization through as "authorization"; this
+// adds service-code, which the auth interceptor sends to SSO beside it, and
+// the correlation and client-IP headers an edge proxy sets. The default
+// matcher would drop all of them.
 func incomingHeaderMatcher(key string) (string, bool) {
 	switch strings.ToLower(key) {
-	case "x-request-id", "x-correlation-id", "x-forwarded-for", "x-real-ip":
+	case auth.ServiceCodeHeader, "x-request-id", "x-correlation-id", "x-forwarded-for", "x-real-ip":
 		return strings.ToLower(key), true
 	default:
 		return runtime.DefaultHeaderMatcher(key)

@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 
+	"github.com/autofik-development/autofik.dev.api.garages.getway/internal/auth"
 	"github.com/autofik-development/autofik.dev.api.garages.getway/internal/cms"
 	"github.com/autofik-development/autofik.dev.api.garages.getway/internal/gateway"
 	pb "github.com/autofik-development/autofik.dev.api.garages.getway/internal/grpc/pb/garages/v1"
@@ -64,6 +65,20 @@ func main() {
 
 	setupLogging()
 
+	// Every RPC but the health checks is verified with the garage SSO, so a
+	// configuration that cannot reach it stops the process here rather than
+	// answering every request with 503.
+	authConfig, err := auth.ConfigFromEnv()
+	if err != nil {
+		slog.Error("invalid sso configuration", "error", err)
+		os.Exit(1)
+	}
+	if requestTimeout := interceptors.TimeoutFromEnv(); authConfig.VerifyTimeout >= requestTimeout {
+		slog.Warn("sso verify timeout does not fit inside the request timeout; a slow sso leaves nothing for the cms",
+			"sso_verify_timeout", authConfig.VerifyTimeout.String(), "request_timeout", requestTimeout.String())
+	}
+	slog.Info("verifying callers with the garage sso", "url", authConfig.VerifyURL)
+
 	listenAddr := envOr("GRPC_LISTEN_ADDR", ":"+gateway.DefaultGRPCPort)
 	gatewayAddr := envOr("GATEWAY_LISTEN_ADDR", ":8083")
 
@@ -73,7 +88,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	grpcServer := newGRPCServer()
+	grpcServer := newGRPCServer(auth.NewHTTPVerifier(authConfig, nil))
 
 	// Register the standard gRPC health protocol. This - not an HTTP path -
 	// is what k8s `grpc:` probes, Envoy, and gRPC client-side load balancing
@@ -233,16 +248,22 @@ func runHealthCheck() int {
 	return 0
 }
 
-func newGRPCServer() *grpc.Server {
+func newGRPCServer(verifier auth.Verifier) *grpc.Server {
 	return grpc.NewServer(
 		// Order matters: Recovery is outermost so it also catches a panic
 		// raised inside another interceptor; Logging then records the final
-		// status code; Timeout bounds the handler.
+		// status code, a refused caller's included; Timeout bounds the
+		// handler; auth runs inside Timeout, so verifying the caller spends
+		// from the RPC's own deadline.
 		grpc.ChainUnaryInterceptor(
 			interceptors.Recovery(),
 			interceptors.Logging(),
 			interceptors.Timeout(interceptors.TimeoutFromEnv()),
+			auth.UnaryInterceptor(verifier),
 		),
+		// No RPC of this service streams today; the gate is here so one
+		// added later does not run unverified.
+		grpc.StreamInterceptor(auth.StreamInterceptor(verifier)),
 		grpc.MaxRecvMsgSize(maxMessageSize),
 		grpc.MaxSendMsgSize(maxMessageSize),
 		grpc.MaxConcurrentStreams(maxConcurrentStreams),
