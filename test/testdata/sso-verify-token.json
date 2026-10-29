@@ -1,0 +1,28 @@
+{
+  "status": "success",
+  "message": "Verify tokens retrieved successfully",
+  "code": "VERIFY_TOKEN_LIST_SUCCESS",
+  "state": "garage_verify_token_list",
+  "data": [
+    {
+      "uuid": "5d0c6a8e-2f4b-4c1d-9e7a-3b8f1c2d4e6f",
+      "deviceId": "0b9a8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d",
+      "otpVerify": true,
+      "profileVerify": true,
+      "TokenStatus": "unauth",
+      "isLogout": true,
+      "garageAccountId": "12345678",
+      "serviceCode": "sso-garage"
+    },
+    {
+      "uuid": "5d0c6a8e-2f4b-4c1d-9e7a-3b8f1c2d4e6f",
+      "deviceId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "otpVerify": true,
+      "profileVerify": true,
+      "TokenStatus": "success",
+      "isLogout": false,
+      "garageAccountId": "12345678",
+      "serviceCode": "sso-garage"
+    }
+  ]
+}
